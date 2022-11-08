@@ -32,4 +32,13 @@ public class FileManipulate {
             System.out.println(s);
         }
     }
+
+    public void writePcodeResult(ArrayList<String> res) throws IOException {
+        FileWriter writer = new FileWriter("pcoderesult.txt");
+        for (String s : res) {
+            writer.write(s);
+        }
+        writer.flush();
+        writer.close();
+    }
 }

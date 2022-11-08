@@ -2,12 +2,21 @@ public class Token {
     private String key;
     private String value;
 
+    private int row; //行号
     public String getKey() {
         return key;
     }
 
     public void setKey(String key) {
         this.key = key;
+    }
+
+    public int getRow() {
+        return row;
+    }
+
+    public void setRow(int row) {
+        this.row = row;
     }
 
     public String getValue() {
@@ -18,9 +27,10 @@ public class Token {
         this.value = value;
     }
 
-    public Token(String key, String value) {
+    public Token(String key, String value,int row) {
         this.key = key;
         this.value = value;
+        this.row = row;
     }
 
     @Override

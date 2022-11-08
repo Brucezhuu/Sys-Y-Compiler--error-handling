@@ -8,9 +8,11 @@ public class Compiler {
         ArrayList<Token> tokens;
         Lexer lexer = new Lexer(lines);
         tokens = lexer.analyze();
-        /// f.writeFile(res);
-        syntaxParser par = new syntaxParser(tokens);
-        ArrayList<String> res = par.parse();
-        f.writeFile(res);
+        syntaxParser parser = new syntaxParser(tokens);
+        parser.parse();
+        ArrayList<PCode> codes = parser.getCodes();
+        PCodeExecutor executor = new PCodeExecutor(codes);
+        executor.run();
+        f.writePcodeResult(executor.getPrintList());
     }
 }
