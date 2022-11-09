@@ -41,4 +41,13 @@ public class FileManipulate {
         writer.flush();
         writer.close();
     }
+
+    public void printErrors(ArrayList<Error> errors) throws IOException {
+        FileWriter writer = new FileWriter("error.txt");
+        for (Error error : errors) {
+            writer.write(error.toString() + '\n');
+        }
+        writer.flush();
+        writer.close();
+    }
 }

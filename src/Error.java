@@ -1,4 +1,4 @@
-public class Error {
+public class Error implements Comparable {
     private int n;
     private String type;
 
@@ -36,5 +36,15 @@ public class Error {
     @Override
     public String toString() {
         return n + " " + type;
+    }
+
+    @Override
+    public int compareTo(Object o) {
+        Error e = (Error) o;
+        if (this.n > e.n) {
+            return 1;
+        } else {
+            return -1;
+        }
     }
 }

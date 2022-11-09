@@ -1,5 +1,8 @@
+
+
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Objects;
 
 public class syntaxParser {
     private final ArrayList<Token> tokens; // 词法分析得到的 TokenList,用于语法分析
@@ -7,7 +10,7 @@ public class syntaxParser {
 
     private Token curToken;
 
-//    private int scope = -1;
+    //    private int scope = -1;
     private int curScope = -1;
     private int scope = -1;
     private HashMap<Integer, symbolTable> symbolTables = new HashMap<>();
@@ -19,6 +22,9 @@ public class syntaxParser {
     private lableGenerator labGen = new lableGenerator();
     private int pos; //指向curToken在tokens中的位置
     private int whileFlag = 0; // means if the current code block is in while circle.
+
+    private boolean needRetVal = false;
+
     public syntaxParser(ArrayList<Token> tokens) {
         this.tokens = tokens;
         this.pos = 0;
@@ -33,22 +39,21 @@ public class syntaxParser {
 
     private void parseCompUnit() {
         addAndEnterScope();
-        while (TokenForwardIs("CONSTTK",0) && TokenForwardIs("INTTK", 1) && TokenForwardIs("IDENFR", 2) ||
-                TokenForwardIs("INTTK",0) && TokenForwardIs("IDENFR", 1) && TokenForwardIs("LBRACK", 2) ||
-                TokenForwardIs("INTTK",0) && TokenForwardIs("IDENFR", 1) && TokenForwardIs("ASSIGN", 2) ||
-                TokenForwardIs("INTTK",0) && TokenForwardIs("IDENFR", 1) && TokenForwardIs("COMMA", 2) ||
-                TokenForwardIs("INTTK",0) && TokenForwardIs("IDENFR", 1) && TokenForwardIs("SEMICN", 2)
+        while (TokenForwardIs("CONSTTK", 0) && TokenForwardIs("INTTK", 1) && TokenForwardIs("IDENFR", 2) ||
+                TokenForwardIs("INTTK", 0) && TokenForwardIs("IDENFR", 1) && TokenForwardIs("LBRACK", 2) ||
+                TokenForwardIs("INTTK", 0) && TokenForwardIs("IDENFR", 1) && TokenForwardIs("ASSIGN", 2) ||
+                TokenForwardIs("INTTK", 0) && TokenForwardIs("IDENFR", 1) && TokenForwardIs("COMMA", 2) ||
+                TokenForwardIs("INTTK", 0) && TokenForwardIs("IDENFR", 1) && TokenForwardIs("SEMICN", 2)
         ) {
             parseDecl();
         }
-        while(TokenForwardIs("IDENFR", 1) && TokenForwardIs("LPARENT", 2)
-                && (TokenForwardIs("INTTK",0) || TokenForwardIs("VOIDTK",0))) {
+        while (TokenForwardIs("IDENFR", 1) && TokenForwardIs("LPARENT", 2)
+                && (TokenForwardIs("INTTK", 0) || TokenForwardIs("VOIDTK", 0))) {
             parseFuncDef();
         }
-        if (TokenForwardIs("INTTK",0) && TokenForwardIs("MAINTK",1)) {
+        if (TokenForwardIs("INTTK", 0) && TokenForwardIs("MAINTK", 1)) {
             parseMainFuncDef();
-        }
-        else{
+        } else {
             error();
         }
         removeLastScope();
@@ -61,27 +66,34 @@ public class syntaxParser {
         ArrayList<Integer> paras = new ArrayList<>();
         Token ident = curToken;
         parseIdent();
+        if (functions.containsKey(ident.getValue())) {
+            error("b", ident.getRow());
+        }
+        if (symbolTables.get(0).hasSymbol(ident)) {
+            error("b", ident.getRow());
+        }
         PCode code = new PCode(CodeType.FUNC, ident.getValue());
         codes.add(code);
         Function function = new Function(ident.getValue(), returnType);
         addAndEnterScope();
         syntaxCheck("LPARENT");
-        if (TokenForwardIs("RPARENT",0)) {
+        if (TokenForwardIs("RPARENT", 0)) {
             peek();
-        }
-        else if (TokenForwardIs("LBRACE",0)) {
-            error();
-        }
-        else {
+        } else if (TokenForwardIs("LBRACE", 0)) {
+            error("j",tokens.get(pos - 1).getRow());
+        } else {
             paras = parseFuncFParams();
             syntaxCheck("RPARENT");
         }
         function.setParas(paras);
         functions.put(function.getFuncName(), function);
-        boolean isReturn = parseBlock(true);
+        boolean isRetVal = parseBlock(true);
+        if (needRetVal && !isRetVal) {
+            error("g", tokens.get(pos - 1).getRow());
+        }
         removeLastScope();
         code.setV2(String.valueOf(paras.size()));
-        codes.add(new PCode(CodeType.RET, ""+ 0));
+        codes.add(new PCode(CodeType.RET, "" + 0));
         codes.add(new PCode(CodeType.ENDFUNC));
         res.add("<FuncDef>");
     }
@@ -90,7 +102,7 @@ public class syntaxParser {
         ArrayList<Integer> paras = new ArrayList<>();
         int paraType = parseFuncFParam();
         paras.add(paraType);
-        while(TokenForwardIs("COMMA",0)) {
+        while (TokenForwardIs("COMMA", 0)) {
             peek();
             paraType = parseFuncFParam();
             paras.add(paraType);
@@ -103,12 +115,15 @@ public class syntaxParser {
         parseBtype();
         Token ident = curToken;
         parseIdent();
+        if (duplicatedSymbol(ident)) {
+            error("b", ident.getRow());
+        }
         int paraType = 0;
-        if(TokenForwardIs("LBRACK",0)) {
+        if (TokenForwardIs("LBRACK", 0)) {
             peek();
             paraType++;
             syntaxCheck("RBRACK");
-            while(TokenForwardIs("LBRACK",0)) {
+            while (TokenForwardIs("LBRACK", 0)) {
                 paraType++;
                 peek();
                 parseConstExp();
@@ -122,7 +137,8 @@ public class syntaxParser {
     }
 
     private String parseFuncType() {
-        if (TokenForwardIs("VOIDTK",0) || TokenForwardIs("INTTK",0)) {
+        if (TokenForwardIs("VOIDTK", 0) || TokenForwardIs("INTTK", 0)) {
+            needRetVal = TokenForwardIs("INTTK", 0);
             Token token = curToken;
             peek();
             res.add("<FuncType>");
@@ -132,20 +148,25 @@ public class syntaxParser {
             return null;
         }
     }
+
     private void parseMainFuncDef() {
         syntaxCheck("INTTK");
-        if (functions.containsKey(curToken.getValue())) {
-            error("b");
+        if (functions.containsKey(curToken.getValue()) || symbolTables.get(0).hasSymbol(curToken)) {
+            error("b", curToken.getRow());
         } else {
             Function function = new Function(curToken.getValue(), "int");
             function.setParas(new ArrayList<>());
             functions.put("main", function);
         }
         codes.add(new PCode(CodeType.MAIN, curToken.getValue()));
+        needRetVal = true;
         syntaxCheck("MAINTK");
         syntaxCheck("LPARENT");
         syntaxCheck("RPARENT");
-        parseBlock(false);
+        boolean isRetVal = parseBlock(false);
+        if (needRetVal && !isRetVal) {
+            error("g", tokens.get(pos - 1).getRow());
+        }
         codes.add(new PCode(CodeType.EXIT));
         res.add("<MainFuncDef>");
     }
@@ -156,9 +177,10 @@ public class syntaxParser {
             addAndEnterScope();
         }
         boolean isReturn = false;
-        while(!TokenForwardIs("RBRACE",0)) {
-           isReturn = parseBlockItem();
+        while (!TokenForwardIs("RBRACE", 0)) {
+            isReturn = parseBlockItem();
         }
+        Token rbrace = curToken;
         syntaxCheck("RBRACE");
         res.add("<Block>");
         if (!isFuncDef) {
@@ -169,18 +191,17 @@ public class syntaxParser {
 
     private boolean parseBlockItem() {
         boolean isReturn = false;
-        if (TokenForwardIs("CONSTTK",0) || TokenForwardIs("INTTK",0)) {
+        if (TokenForwardIs("CONSTTK", 0) || TokenForwardIs("INTTK", 0)) {
             parseDecl();
-        }
-        else {
+        } else {
             isReturn = parseStmt();
         }
         return isReturn;
     }
 
     private boolean parseStmt() {
-        boolean isReturn = false;
-        if (TokenForwardIs("IFTK",0)) {
+        boolean isRetVal = false;
+        if (TokenForwardIs("IFTK", 0)) {
             ifLabels.add(new HashMap<>());
             ifLabels.get(ifLabels.size() - 1).put("if", labGen.generate("if"));
             ifLabels.get(ifLabels.size() - 1).put("else", labGen.generate("else"));
@@ -196,14 +217,13 @@ public class syntaxParser {
             parseStmt();
             codes.add(new PCode(CodeType.JMP, ifLabels.get(ifLabels.size() - 1).get("if_end")));
             codes.add(new PCode(CodeType.LABEL, ifLabels.get(ifLabels.size() - 1).get("else")));
-            if (TokenForwardIs("ELSETK",0)) {
+            if (TokenForwardIs("ELSETK", 0)) {
                 peek();
                 parseStmt();
             }
             codes.add(new PCode(CodeType.LABEL, ifLabels.get(ifLabels.size() - 1).get("if_end")));
             ifLabels.remove(ifLabels.size() - 1);
-        }
-        else if (TokenForwardIs("WHILETK",0)) {
+        } else if (TokenForwardIs("WHILETK", 0)) {
             whileLabels.add(new HashMap<>());
             whileLabels.get(whileLabels.size() - 1).put("while", labGen.generate("while"));
             whileLabels.get(whileLabels.size() - 1).put("while_end", labGen.generate("while_end"));
@@ -221,96 +241,124 @@ public class syntaxParser {
             codes.add(new PCode(CodeType.JMP, whileLabels.get(whileLabels.size() - 1).get("while")));
             codes.add(new PCode(CodeType.LABEL, whileLabels.get(whileLabels.size() - 1).get("while_end")));
             whileLabels.remove(whileLabels.size() - 1);
-        }
-        else if(TokenForwardIs("BREAKTK",0) || TokenForwardIs("CONTINUETK",0)) {
-            if (TokenForwardIs("BREAKTK",0)) {
-                codes.add(new PCode(CodeType.JMP, whileLabels.get(whileLabels.size() - 1).get("while_end")));
+        } else if (TokenForwardIs("BREAKTK", 0) || TokenForwardIs("CONTINUETK", 0)) {
+            if (TokenForwardIs("BREAKTK", 0)) {
                 if (whileFlag == 0) {
-                    error("m");
+                    error("m",curToken.getRow());
                 }
-            }
-            else {
-                codes.add(new PCode(CodeType.JMP, whileLabels.get(whileLabels.size() - 1).get("while")));
+                else {
+                    codes.add(new PCode(CodeType.JMP, whileLabels.get(whileLabels.size() - 1).get("while_end")));
+                }
+            } else {
                 if (whileFlag == 0) {
-                    error("m");
+                    error("m",curToken.getRow());
+                } else {
+                    codes.add(new PCode(CodeType.JMP, whileLabels.get(whileLabels.size() - 1).get("while")));
                 }
             }
             peek();
             syntaxCheck("SEMICN");
-        }
-        else if (TokenForwardIs("RETURNTK",0)) {
+        } else if (TokenForwardIs("RETURNTK", 0)) {
+            Token ret = curToken;
             peek();
-            boolean flag = false;
-            isReturn = true;
-            if (TokenForwardIs("SEMICN",0)) {
+            if (TokenForwardIs("SEMICN", 0)) {
                 peek();
-            }
-            else if (TokenForwardIs("RBRACE",0)) {
-                error();
-            }
-            else {
+            } else if (TokenForwardIs("RBRACE", 0)) {
+                error("i",tokens.get(pos - 1).getRow());
+            } else {
                 parseExp();
                 syntaxCheck("SEMICN");
-                flag = true;
+                isRetVal = true;
+                if (!needRetVal) {
+                    error("f", ret.getRow());
+                }
             }
-            codes.add(new PCode(CodeType.RET, String.valueOf(flag ? 1 : 0)));
-        }
-        else if (TokenForwardIs("PRINTFTK",0)) {
+            codes.add(new PCode(CodeType.RET, String.valueOf(isRetVal ? 1 : 0)));
+        } else if (TokenForwardIs("PRINTFTK", 0)) {
+            Token printTk = curToken;
             peek();
             syntaxCheck("LPARENT");
             Token strtk = parseFormatString();
+            if (illegalForStr(strtk.getValue())) {
+                error("a", strtk.getRow());
+            }
             int para = 0;
-            while(TokenForwardIs("COMMA",0)) {
+            while (TokenForwardIs("COMMA", 0)) {
                 peek();
                 parseExp();
                 para++;
             }
+            if (para != getFormatNum(strtk)) {
+                error("l", printTk.getRow());
+            }
             syntaxCheck("RPARENT");
             syntaxCheck("SEMICN");
             codes.add(new PCode(CodeType.PRINT, strtk.getValue(), "" + para));
-        }
-        else if (TokenForwardIs("LBRACE",0)) {
+        } else if (TokenForwardIs("LBRACE", 0)) {
             parseBlock(false);
-        }
-        else if (TokenForwardIs("IDENFR",0) && isLVal()) {
+        } else if (TokenForwardIs("IDENFR", 0) && isLVal()) {
             Token ident = curToken;
             int dim = parseLVal();
-            codes.add(new PCode(CodeType.ADDRESS, getSymbol(ident).getScopeID() + "_" + ident.getValue(), String.valueOf(dim)));
+            if (isConst(ident)) {
+                error("h", ident.getRow());
+            }
+            if (hasSymbol(ident)) {
+                codes.add(new PCode(CodeType.ADDRESS, getSymbol(ident).getScopeID() + "_" + ident.getValue(), String.valueOf(dim)));
+            }
             syntaxCheck("ASSIGN");
-            if (TokenForwardIs("GETINTTK",0)) {
+            if (TokenForwardIs("GETINTTK", 0)) {
                 peek();
                 syntaxCheck("LPARENT");
                 syntaxCheck("RPARENT");
                 syntaxCheck("SEMICN");
                 codes.add(new PCode(CodeType.GETINT));
-            }
-            else {
+            } else {
                 parseExp();
                 syntaxCheck("SEMICN");
             }
-            codes.add(new PCode(CodeType.ASSIGN, getSymbol(ident).getScopeID() + "_" + ident.getValue()));
-        }
-        else {
-            if (TokenForwardIs("SEMICN",0)) {
-                peek();
+            if (hasSymbol(ident)) {
+                codes.add(new PCode(CodeType.ASSIGN, getSymbol(ident).getScopeID() + "_" + ident.getValue()));
             }
-            else {
+        } else {
+            if (TokenForwardIs("SEMICN", 0)) {
+                peek();
+            } else {
                 parseExp();
                 syntaxCheck("SEMICN");
             }
         }
         res.add("<Stmt>");
-        return isReturn;
+        return isRetVal;
+    }
+
+
+    private int getFormatNum(Token strtk) {
+        String str = strtk.getValue();
+        int ans = 0;
+        for (int i = 1 ;i < str.length() - 1;i++) {
+            if (str.charAt(i) == '%' && str.charAt(i + 1) == 'd') {
+                ans++;
+            }
+        }
+        return ans;
+    }
+
+    private boolean isConst(Token t) {
+        for (symbolTable st : symbolTables.values()) {
+            if (st.hasSymbol(t)) {
+                return st.getSymbol(t).getType().equals("const");
+            }
+        }
+        return false;
     }
 
     private boolean isLVal() {
         int i = 1;
         while (pos + i < tokens.size()) {
             Token newToken = tokens.get(i + pos);
-            if (newToken.getValue().equals(";")) {
+            if (newToken.getValue().equals(";") || newToken.getRow() > curToken.getRow()) {
                 break;
-            }
-            else if (newToken.getValue().equals("=")) {
+            } else if (newToken.getValue().equals("=")) {
                 return true;
             }
             i++;
@@ -319,7 +367,7 @@ public class syntaxParser {
     }
 
     private Token parseFormatString() {
-        if (!TokenForwardIs("STRCON",0)) error();
+        if (!TokenForwardIs("STRCON", 0)) error();
         Token strcon = curToken;
         peek();
         return strcon;
@@ -341,12 +389,12 @@ public class syntaxParser {
         } else {
             codes.add(new PCode(CodeType.JNZ, whileLabels.get(whileLabels.size() - 1).get("while_block")));
         }
-        while(TokenForwardIs("OR",0)) {
+        while (TokenForwardIs("OR", 0)) {
             res.add("<LOrExp>");
             peek();
             label = labGen.generate("cond_" + cnt);
             cnt++;
-            parseLAndExp(from,label);
+            parseLAndExp(from, label);
             codes.add(new PCode(CodeType.LABEL, label));
             codes.add(new PCode(CodeType.OR));
             if (from.equals("IFTK")) {
@@ -358,14 +406,14 @@ public class syntaxParser {
         res.add("<LOrExp>");
     }
 
-    private void parseLAndExp(String from,String label) {
+    private void parseLAndExp(String from, String label) {
         parseEqExp();
         if (from.equals("IFTK")) {
             codes.add(new PCode(CodeType.JZ, label));
         } else {
             codes.add(new PCode(CodeType.JZ, label));
         }
-        while (TokenForwardIs("AND",0)) {
+        while (TokenForwardIs("AND", 0)) {
             res.add("<LAndExp>");
             peek();
             parseEqExp();
@@ -381,7 +429,7 @@ public class syntaxParser {
 
     private void parseEqExp() {
         parseRelExp();
-        while (TokenForwardIs("EQL",0) || TokenForwardIs("NEQ",0)) {
+        while (TokenForwardIs("EQL", 0) || TokenForwardIs("NEQ", 0)) {
             res.add("<EqExp>");
             Token op = curToken;
             peek();
@@ -399,8 +447,8 @@ public class syntaxParser {
 
     private void parseRelExp() {
         parseAddExp();
-        while (TokenForwardIs("LSS",0) || TokenForwardIs("GRE",0)
-                || TokenForwardIs("LEQ",0) || TokenForwardIs("GEQ",0)) {
+        while (TokenForwardIs("LSS", 0) || TokenForwardIs("GRE", 0)
+                || TokenForwardIs("LEQ", 0) || TokenForwardIs("GEQ", 0)) {
             res.add("<RelExp>");
             Token op = curToken;
             peek();
@@ -423,22 +471,21 @@ public class syntaxParser {
     private void parseDecl() {
         if (curToken.getValue().equals("const")) {
             parseConstDecl();
-        } else if(curToken.getValue().equals("int")) {
+        } else if (curToken.getValue().equals("int")) {
             parseVarDecl();
-        }
-        else {
+        } else {
             error();
         }
     }
 
-    private void parseConstDecl(){
+    private void parseConstDecl() {
         if (!curToken.getValue().equals("const")) {
             error();
         }
         if (peek()) {
             parseBtype();
             parseConstDef();
-            while (TokenForwardIs("COMMA",0)) {
+            while (TokenForwardIs("COMMA", 0)) {
                 peek();
                 parseConstDef();
             }
@@ -451,7 +498,7 @@ public class syntaxParser {
     private void parseVarDecl() {
         parseBtype();
         parseVarDef();
-        while (TokenForwardIs("COMMA",0)) {
+        while (TokenForwardIs("COMMA", 0)) {
             if (peek()) {
                 parseVarDef();
             }
@@ -463,9 +510,12 @@ public class syntaxParser {
     private void parseVarDef() {
         Token ident = curToken;
         parseIdent();
+        if (duplicatedSymbol(ident)) {
+            error("b", ident.getRow());
+        }
         int dimension = 0;
         codes.add(new PCode(CodeType.VAR, curScope + "_" + ident.getValue()));
-        while (TokenForwardIs("LBRACK",0)) {
+        while (TokenForwardIs("LBRACK", 0)) {
             if (peek()) {
                 dimension++;
                 parseConstExp();
@@ -477,7 +527,7 @@ public class syntaxParser {
         }
         symbolTables.get(scope).addSymbol(new Symbol(curScope, "var", ident.getValue(), dimension));
 
-        if (TokenForwardIs("ASSIGN",0)) {
+        if (TokenForwardIs("ASSIGN", 0)) {
             peek();
             parseInitVal();
         } else {
@@ -489,13 +539,12 @@ public class syntaxParser {
     private void parseConstDef() {
         Token ident = curToken;
         parseIdent();
-        if(duplicatedSymbol(ident)) {
-            error("b");
+        if (duplicatedSymbol(ident)) {
+            error("b", ident.getRow());
         }
-
         codes.add(new PCode(CodeType.VAR, curScope + "_" + ident.getValue()));
         int dimension = 0;
-        while (TokenForwardIs("LBRACK",0)) {
+        while (TokenForwardIs("LBRACK", 0)) {
             if (peek()) {
                 parseConstExp();
                 syntaxCheck("RBRACK");
@@ -517,40 +566,38 @@ public class syntaxParser {
     }
 
     private void parseConstInitVal() {
-        if (TokenForwardIs("LBRACE",0)) {
+        if (TokenForwardIs("LBRACE", 0)) {
             peek();
-            if (TokenForwardIs("RBRACE",0)) {
+            if (TokenForwardIs("RBRACE", 0)) {
                 peek();
             } else {
                 parseConstInitVal();
-                while (TokenForwardIs("COMMA",0)) {
+                while (TokenForwardIs("COMMA", 0)) {
                     peek();
                     parseConstInitVal();
                 }
                 syntaxCheck("RBRACE");
             }
-        }
-        else {
+        } else {
             parseConstExp();
         }
         res.add("<ConstInitVal>");
     }
 
     private void parseInitVal() {
-        if (TokenForwardIs("LBRACE",0)) {
+        if (TokenForwardIs("LBRACE", 0)) {
             peek();
-            if (TokenForwardIs("RBRACE",0)) {
+            if (TokenForwardIs("RBRACE", 0)) {
                 peek();
             } else {
                 parseInitVal();
-                while (TokenForwardIs("COMMA",0)) {
+                while (TokenForwardIs("COMMA", 0)) {
                     peek();
                     parseInitVal();
                 }
                 syntaxCheck("RBRACE");
             }
-        }
-        else {
+        } else {
             parseExp();
         }
         res.add("<InitVal>");
@@ -564,7 +611,7 @@ public class syntaxParser {
 
     private int parseAddExp() {
         int dim = parseMulExp();
-        while(TokenForwardIs("PLUS",0) || TokenForwardIs("MINU",0)) {
+        while (TokenForwardIs("PLUS", 0) || TokenForwardIs("MINU", 0)) {
             res.add("<AddExp>");
             Token op = curToken;
             peek();
@@ -581,12 +628,12 @@ public class syntaxParser {
 
     private int parseMulExp() {
         int dim = parseUnaryExp();
-        while (TokenForwardIs("MULT",0) || TokenForwardIs("DIV",0) || TokenForwardIs("MOD",0)) {
+        while (TokenForwardIs("MULT", 0) || TokenForwardIs("DIV", 0) || TokenForwardIs("MOD", 0)) {
             Token op = curToken;
             res.add("<MulExp>");
             peek();
             dim = parseUnaryExp();
-            if(op.getKey().equals("MULT")) {
+            if (op.getKey().equals("MULT")) {
                 codes.add(new PCode(CodeType.MUL));
             } else if (op.getKey().equals("DIV")) {
                 codes.add(new PCode(CodeType.DIV));
@@ -600,7 +647,7 @@ public class syntaxParser {
 
     private int parseUnaryExp() {
         int dim = 0;
-        if (TokenForwardIs("IDENFR",0) && TokenForwardIs("LPARENT",1)) {
+        if (TokenForwardIs("IDENFR", 0) && TokenForwardIs("LPARENT", 1)) {
             Token ident = curToken;
             ArrayList<Integer> paras = null;
             if (!hasFunction(ident)) {
@@ -608,13 +655,18 @@ public class syntaxParser {
             } else {
                 paras = getFunction(ident).getParas();
             }
-            peek();peek();
-            if (TokenForwardIs("RPARENT",0)) {
+            peek();
+            peek();
+            if (TokenForwardIs("RPARENT", 0)) {
                 peek();
-            } else if (TokenForwardIs("RBRACK",0)) {
-                error();
-            } else {
-                parseFuncRParams();
+                if (paras != null && paras.size() != 0) {
+                    error("d", ident.getRow());
+                }
+            } else if (TokenForwardIs("SEMICN", 0)) {
+                error("j", tokens.get(pos - 1).getRow());
+            }
+            else {
+                parseFuncRParams(paras, ident);
                 syntaxCheck("RPARENT");
             }
             codes.add(new PCode(CodeType.CALL, ident.getValue()));
@@ -623,8 +675,7 @@ public class syntaxParser {
                     dim = -1;
                 }
             }
-        }
-        else if (TokenForwardIs("PLUS",0) || TokenForwardIs("MINU",0) || TokenForwardIs("NOT",0)) {
+        } else if (TokenForwardIs("PLUS", 0) || TokenForwardIs("MINU", 0) || TokenForwardIs("NOT", 0)) {
             Token t = curToken;
             parseUnaryOp();
             parseUnaryExp();
@@ -635,8 +686,7 @@ public class syntaxParser {
             } else {
                 codes.add(new PCode(CodeType.NOT));
             }
-        }
-        else {
+        } else {
             dim = parsePrimaryExp();
         }
         res.add("<UnaryExp>");
@@ -646,12 +696,11 @@ public class syntaxParser {
 
     private int parsePrimaryExp() {
         int dim = 0;
-        if (TokenForwardIs("LPARENT",0)) {
+        if (TokenForwardIs("LPARENT", 0)) {
             peek();
             parseExp();
             syntaxCheck("RPARENT");
-        }
-        else if (TokenForwardIs("IDENFR",0)) {
+        } else if (TokenForwardIs("IDENFR", 0)) {
             Token ident = curToken;
             dim = parseLVal();
             int trueDim = -1;
@@ -663,16 +712,16 @@ public class syntaxParser {
             } else {
                 dim = 0;
             }
-            if (dim == 0) {
+            if (dim == 0 && trueDim != -1) {
                 codes.add(new PCode(CodeType.VALUE, getSymbol(ident).getScopeID() + "_" + ident.getValue(), String.valueOf(trueDim - dim)));
             } else {
-                codes.add(new PCode(CodeType.ADDRESS, getSymbol(ident).getScopeID() + "_" + ident.getValue(), String.valueOf(trueDim - dim)));
+                if (trueDim != -1) {
+                    codes.add(new PCode(CodeType.ADDRESS, getSymbol(ident).getScopeID() + "_" + ident.getValue(), String.valueOf(trueDim - dim)));
+                }
             }
-        }
-        else if (TokenForwardIs("INTCON",0)) {
+        } else if (TokenForwardIs("INTCON", 0)) {
             parseNumber(curToken);
-        }
-        else {
+        } else {
             error();
         }
         res.add("<PrimaryExp>");
@@ -689,7 +738,10 @@ public class syntaxParser {
         Token ident = curToken;
         int dim = 0;
         parseIdent();
-        while (TokenForwardIs("LBRACK",0)) {
+        if (!hasSymbol(ident)) {
+            error("c", ident.getRow());
+        }
+        while (TokenForwardIs("LBRACK", 0)) {
             dim++;
             peek();
             parseExp();
@@ -700,7 +752,7 @@ public class syntaxParser {
     }
 
     private void parseUnaryOp() {
-        if (TokenForwardIs("PLUS",0) || TokenForwardIs("MINU",0) || TokenForwardIs("NOT",0)) {
+        if (TokenForwardIs("PLUS", 0) || TokenForwardIs("MINU", 0) || TokenForwardIs("NOT", 0)) {
             peek();
         } else {
             error();
@@ -708,16 +760,35 @@ public class syntaxParser {
         res.add("<UnaryOp>");
     }
 
-    private void parseFuncRParams() {
+    private void parseFuncRParams(ArrayList<Integer> paras, Token func) {
         int dim = parseExp();
+        ArrayList<Integer> rParams = new ArrayList<>();
+        rParams.add(dim);
         codes.add(new PCode(CodeType.RPARA, String.valueOf(dim)));
-        while(TokenForwardIs("COMMA",0)) {
+        while (TokenForwardIs("COMMA", 0)) {
             peek();
             dim = parseExp();
+            rParams.add(dim);
             codes.add(new PCode(CodeType.RPARA, String.valueOf(dim)));
+        }
+        if (paras != null) {
+            checkParams(paras, rParams, func);
         }
         res.add("<FuncRParams>");
     }
+
+    private void checkParams(ArrayList<Integer> params, ArrayList<Integer> rParams, Token func) {
+        if (params.size() != rParams.size()) {
+            error("d", func.getRow());
+        } else {
+            for (int i = 0; i < params.size(); i++) {
+                if (!Objects.equals(rParams.get(i), params.get(i))) {
+                    error("e", func.getRow());
+                }
+            }
+        }
+    }
+
 
     private void parseBtype() {
         syntaxCheck("INTTK");
@@ -727,18 +798,35 @@ public class syntaxParser {
         syntaxCheck("IDENFR");
     }
 
+    public boolean illegalForStr(String s) {
+        for (int i = 1; i < s.length() - 1; i++) {
+            char c = s.charAt(i);
+            if (!(c == 32 || c == 33 || (c >= 40 && c <= 126))) {
+                if (c == '%' && i + 1 < s.length() && s.charAt(i + 1) == 'd') {
+                    continue;
+                }
+                return true;
+            } else {
+                if (c == '\\' && i + 1 < s.length() && s.charAt(i + 1) != 'n') {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     private Boolean peek() { //获取下一个Token改变，修改pos和curToken
         res.add(curToken.toString());
         if (pos < tokens.size() - 1) {
             curToken = tokens.get(++pos);
             return true;
-        }
-        else {
+        } else {
+            pos++;
             return false; //tokens已经读完
         }
     }
 
-    private Boolean TokenForwardIs(String sym,int offset) { //向前offset读Token
+    private Boolean TokenForwardIs(String sym, int offset) { //向前offset读Token
         if (pos + offset >= tokens.size()) {
             return false; //tokens已经读完
         } else {
@@ -756,12 +844,25 @@ public class syntaxParser {
     }
 
     private void syntaxCheck(String sym) {
-        if (TokenForwardIs(sym,0)) {
+        if (TokenForwardIs(sym, 0)) {
             peek();
         } else {
-            error();
+            switch (sym) {
+                case "SEMICN":
+                    error("i", tokens.get(pos - 1).getRow());
+                    break;
+                case "RPARENT":
+                    error("j", tokens.get(pos - 1).getRow());
+                    break;
+                case "RBRACK":
+                    error("k", tokens.get(pos - 1).getRow());
+                    break;
+                default:
+                    error();
+            }
         }
     }
+
     private void error() {
         System.out.println("error at" + curToken.toString());
         System.exit(0);
@@ -782,10 +883,6 @@ public class syntaxParser {
         errors.add(new Error(lineNo, type));
     }
 
-    private void error(String type) {
-        errors.add(new Error(curToken.getRow(), type));
-    }
-
     private boolean duplicatedSymbol(Token token) {
         return symbolTables.get(scope).hasSymbol(token);
     }
@@ -793,6 +890,7 @@ public class syntaxParser {
     private boolean hasFunction(Token token) {
         return functions.containsKey(token.getValue());
     }
+
     private Function getFunction(Token token) {
         return functions.getOrDefault(token.getValue(), null);
     }
