@@ -344,7 +344,18 @@ public class syntaxParser {
     }
 
     private boolean isConst(Token t) {
-        for (symbolTable st : symbolTables.values()) {
+//        symbolTable curSymbolTable = symbolTables.get(scope);
+//        if (curSymbolTable.hasSymbol(t)) {
+//            return curSymbolTable.getSymbol(t).getType().equals("const");
+//        }
+
+//        for (symbolTable st : symbolTables.values()) {
+//            if (st.hasSymbol(t)) {
+//                return st.getSymbol(t).getType().equals("const");
+//            }
+//        }
+        for (int i = scope; i >= 0; i--) {
+            symbolTable st = symbolTables.get(i);
             if (st.hasSymbol(t)) {
                 return st.getSymbol(t).getType().equals("const");
             }

@@ -17,8 +17,7 @@ public class Compiler {
             PCodeExecutor executor = new PCodeExecutor(codes);
             executor.run();
             f.writePcodeResult(executor.getPrintList());
-        }
-        else{
+        } else {
             Collections.sort(errors);
             f.printErrors(errors);
         }
